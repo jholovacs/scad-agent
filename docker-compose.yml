@@ -1,0 +1,23 @@
+services:
+  scad-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      Ollama__BaseUrl: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      Ollama__Model: ${OLLAMA_MODEL:-llama3.2}
+      Storage__DatabasePath: /data/scad-agent.db
+      Storage__ArtifactsPath: /data/artifacts
+      Agent__MaxCorrectionRetries: ${MAX_CORRECTION_RETRIES:-3}
+      Agent__OpenScadExecutablePath: openscad
+      Agent__OpenScadRemoteUrl: ${OPENSCAD_REMOTE_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - scad-agent-data:/data
+    restart: unless-stopped
+
+volumes:
+  scad-agent-data:
