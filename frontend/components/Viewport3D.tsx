@@ -1,4 +1,4 @@
-import { OrbitControls, Stage } from '@react-three/drei'
+import { Bounds, Center, Environment, OrbitControls } from '@react-three/drei'
 import { Canvas } from '@react-three/fiber'
 import { Suspense, useEffect, useState } from 'react'
 import * as THREE from 'three'
@@ -67,6 +67,22 @@ function StlModel({ url }: { url: string }) {
   )
 }
 
+function ViewportScene({ url }: { url: string }) {
+  return (
+    <>
+      <ambientLight intensity={0.55} />
+      <directionalLight position={[6, 10, 6]} intensity={1.1} castShadow />
+      <Environment preset="city" />
+      <Bounds fit clip observe margin={1.3}>
+        <Center>
+          <StlModel url={url} />
+        </Center>
+      </Bounds>
+      <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
+    </>
+  )
+}
+
 export function Viewport3D({ stlUrl }: Viewport3DProps) {
   const viewportBackground = useViewportBackground()
 
@@ -80,12 +96,14 @@ export function Viewport3D({ stlUrl }: Viewport3DProps) {
 
   return (
     <div className="viewport">
-      <Canvas shadows camera={{ position: [80, 80, 80], fov: 45 }} style={{ background: viewportBackground }}>
+      <Canvas
+        shadows
+        dpr={[1, 2]}
+        camera={{ fov: 45, near: 0.01, far: 100_000, position: [120, 90, 120] }}
+        style={{ width: '100%', height: '100%', background: viewportBackground }}
+      >
         <Suspense fallback={null}>
-          <Stage intensity={0.5} environment="city" adjustCamera={1.2}>
-            <StlModel url={stlUrl} />
-          </Stage>
-          <OrbitControls makeDefault />
+          <ViewportScene url={stlUrl} />
         </Suspense>
       </Canvas>
     </div>

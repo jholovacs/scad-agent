@@ -11,12 +11,15 @@ public class DesignIteration
     public string ScadHash { get; set; } = string.Empty;
     public IterationStatus Status { get; set; }
     public string? AssistantSummary { get; set; }
+    public string? Summary { get; set; }
     public string? RenderError { get; set; }
     public string? DiagnosticLog { get; set; }
     public string? StlArtifactPath { get; set; }
     public string? PreviewArtifactPath { get; set; }
     public int CorrectionAttempts { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public LinearUnits ScadUnits { get; set; } = LinearUnits.Millimeters;
+    public LinearUnits StlExportUnits { get; set; } = LinearUnits.Millimeters;
 
     public DesignSession? Session { get; set; }
 
@@ -33,7 +36,7 @@ public class DesignIteration
         Status = IterationStatus.Succeeded;
         StlArtifactPath = stlPath;
         PreviewArtifactPath = previewPath;
-        AssistantSummary = summary;
+        Summary = summary;
         RenderError = null;
     }
 

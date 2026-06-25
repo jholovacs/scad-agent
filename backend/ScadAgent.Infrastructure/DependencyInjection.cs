@@ -43,7 +43,11 @@ public static class DependencyInjection
         services.AddSingleton<IArtifactStore, LocalArtifactStore>();
 
         services.AddScoped<IContextManager, ContextManager>();
+        services.AddScoped<IConversationContextPreparer, ConversationContextPreparer>();
+        services.AddScoped<IMessageIntentClassifier, MessageIntentClassifier>();
+        services.AddScoped<ISessionMessageService, SessionMessageService>();
         services.AddScoped<IDesignAgentService, DesignAgentService>();
+        services.AddScoped<IConversationService, ConversationService>();
 
         return services;
     }

@@ -10,13 +10,32 @@ public record IterationDto(
     IterationStatus Status,
     string ScadContent,
     string? AssistantSummary,
+    string? Summary,
     string? RenderError,
     string? DiagnosticLog,
     bool HasStl,
     bool HasPreview,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    LinearUnits ScadUnits,
+    LinearUnits StlExportUnits);
 
-public record MessageDto(Guid Id, MessageRole Role, string Content, DateTimeOffset CreatedAt);
+public record MessageDto(
+    Guid Id,
+    MessageRole Role,
+    string Content,
+    DateTimeOffset CreatedAt,
+    Guid? IterationId,
+    MessageIntent? Intent);
+
+public record MessagesPageDto(
+    IReadOnlyList<MessageDto> Messages,
+    bool HasMore,
+    DateTimeOffset? OldestCreatedAt);
+
+public record IterationsPageDto(
+    IReadOnlyList<IterationDto> Iterations,
+    bool HasMore,
+    int? OldestVersion);
 
 public record SessionDetailDto(
     Guid Id,
@@ -29,6 +48,8 @@ public record SessionDetailDto(
     IReadOnlyList<MessageDto> Messages);
 
 public record CreateSessionRequest(string? Title);
+
+public record UpdateSessionRequest(string Title);
 
 public record PostMessageRequest(string Content);
 

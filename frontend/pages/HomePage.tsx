@@ -16,12 +16,21 @@ export function HomePage() {
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: (sessionId: string) => api.deleteSession(sessionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['sessions'] })
+    },
+  })
+
   return (
     <main className="page">
       <SessionList
         sessions={sessionsQuery.data ?? []}
         onCreate={() => createMutation.mutate()}
+        onDelete={(sessionId) => deleteMutation.mutate(sessionId)}
         creating={createMutation.isPending}
+        deletingId={deleteMutation.isPending ? deleteMutation.variables : null}
       />
     </main>
   )

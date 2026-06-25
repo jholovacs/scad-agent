@@ -4,6 +4,7 @@ using ScadAgent.Application.Diagnostics;
 using ScadAgent.Application.DTOs;
 using ScadAgent.Application.Interfaces;
 using ScadAgent.Application.Options;
+using ScadAgent.Application.Utilities;
 using ScadAgent.Application.Services;
 using ScadAgent.Domain.Entities;
 using ScadAgent.Domain.Enums;
@@ -15,6 +16,7 @@ public class DesignAgentService : IDesignAgentService
 {
     private readonly ISessionService _sessions;
     private readonly IContextManager _contextManager;
+    private readonly IConversationContextPreparer _contextPreparer;
     private readonly IOllamaService _ollama;
     private readonly IOpenScadService _openScad;
     private readonly IArtifactStore _artifacts;
@@ -26,6 +28,7 @@ public class DesignAgentService : IDesignAgentService
     public DesignAgentService(
         ISessionService sessions,
         IContextManager contextManager,
+        IConversationContextPreparer contextPreparer,
         IOllamaService ollama,
         IOpenScadService openScad,
         IArtifactStore artifacts,
@@ -36,6 +39,7 @@ public class DesignAgentService : IDesignAgentService
     {
         _sessions = sessions;
         _contextManager = contextManager;
+        _contextPreparer = contextPreparer;
         _ollama = ollama;
         _openScad = openScad;
         _artifacts = artifacts;
@@ -75,6 +79,7 @@ public class DesignAgentService : IDesignAgentService
         };
 
         await _sessions.AddIterationAsync(iteration, cancellationToken);
+        await _sessions.LinkMessageToIterationAsync(latestUserMessage.Id, iteration.Id, cancellationToken);
 
         await _notifier.NotifyIterationStartedAsync(
             new AgentProgressDto(sessionId, iteration.Id, "started", "Generating OpenSCAD design"),
@@ -85,13 +90,13 @@ public class DesignAgentService : IDesignAgentService
             .OrderByDescending(i => i.Version)
             .FirstOrDefault()?.RenderError;
 
+        var preparedHistory = await _contextPreparer.PrepareAsync(sessionId, cancellationToken);
+
         var context = new DesignContext(
             currentScad,
             latestUserMessage.Content,
-            session.Messages
-                .OrderBy(m => m.CreatedAt)
-                .Select(m => new ConversationMessageContext(MapRole(m.Role), m.Content))
-                .ToList(),
+            preparedHistory.Summary,
+            preparedHistory.Messages,
             lastError);
 
         var messages = _contextManager.BuildMessages(context);
@@ -115,6 +120,8 @@ public class DesignAgentService : IDesignAgentService
         var scadSource = new ScadSource(scadContent);
         iteration.ScadContent = scadSource.Content;
         iteration.ScadHash = scadSource.Hash;
+        iteration.ScadUnits = ScadUnits.Parse(scadContent);
+        iteration.StlExportUnits = LinearUnits.Millimeters;
         iteration.AssistantSummary = assistantText.Length > 500 ? assistantText[..500] : assistantText;
         await _artifacts.SaveScadAsync(sessionId, iteration.Id, scadContent, cancellationToken);
 
@@ -132,7 +139,8 @@ public class DesignAgentService : IDesignAgentService
                 cancellationToken);
 
             var outputDir = _artifacts.GetIterationDirectory(sessionId, iteration.Id);
-            renderResult = await _openScad.RenderAsync(scadContent, outputDir, cancellationToken);
+            var renderScad = ScadUnits.ForRender(scadContent, iteration.ScadUnits);
+            renderResult = await _openScad.RenderAsync(renderScad, outputDir, cancellationToken);
 
             if (renderResult.Success)
                 break;
@@ -171,6 +179,8 @@ public class DesignAgentService : IDesignAgentService
             scadSource = new ScadSource(scadContent);
             iteration.ScadContent = scadSource.Content;
             iteration.ScadHash = scadSource.Hash;
+            iteration.ScadUnits = ScadUnits.Parse(scadContent);
+            iteration.StlExportUnits = LinearUnits.Millimeters;
             await _artifacts.SaveScadAsync(sessionId, iteration.Id, scadContent, cancellationToken);
         }
 
@@ -188,11 +198,16 @@ public class DesignAgentService : IDesignAgentService
 
             iteration.DiagnosticLog = diagnostic;
             iteration.MarkFailed(error);
+            iteration.Summary = await GenerateIterationSummaryAsync(
+                latestUserMessage.Content,
+                succeeded: false,
+                error,
+                cancellationToken);
             await _sessions.UpdateIterationAsync(iteration, cancellationToken);
             session.MarkFailed();
             await _sessions.UpdateSessionAsync(session, cancellationToken);
 
-            await _sessions.AddMessageAsync(sessionId, MessageRole.Assistant, diagnostic, cancellationToken);
+            await _sessions.AddMessageAsync(sessionId, MessageRole.Assistant, diagnostic, iteration.Id, cancellationToken: cancellationToken);
 
             await _notifier.NotifyIterationFailedAsync(
                 new AgentProgressDto(sessionId, iteration.Id, "failed", error, diagnostic),
@@ -200,7 +215,13 @@ public class DesignAgentService : IDesignAgentService
             return iteration.Id;
         }
 
-        iteration.MarkSucceeded(renderResult.StlPath!, renderResult.PreviewPath, iteration.AssistantSummary);
+        var summary = await GenerateIterationSummaryAsync(
+            latestUserMessage.Content,
+            succeeded: true,
+            $"Rendered OpenSCAD design (version {iteration.Version}).",
+            cancellationToken);
+
+        iteration.MarkSucceeded(renderResult.StlPath!, renderResult.PreviewPath, summary);
         iteration.DiagnosticLog = null;
         await _sessions.UpdateIterationAsync(iteration, cancellationToken);
         session.MarkReady(iteration.Id);
@@ -209,8 +230,9 @@ public class DesignAgentService : IDesignAgentService
         await _sessions.AddMessageAsync(
             sessionId,
             MessageRole.Assistant,
-            iteration.AssistantSummary ?? "Design rendered successfully.",
-            cancellationToken);
+            summary,
+            iteration.Id,
+            cancellationToken: cancellationToken);
 
         await _notifier.NotifyIterationCompletedAsync(
             new AgentProgressDto(sessionId, iteration.Id, "completed", "Design rendered successfully"),
@@ -247,14 +269,26 @@ public class DesignAgentService : IDesignAgentService
             diagnostic += $"\n--- OpenSCAD stderr ---\n{renderError}";
         }
 
-        var summary = exception.Message;
+        var userInstruction = session.Messages
+            .Where(m => m.Role == MessageRole.User)
+            .OrderByDescending(m => m.CreatedAt)
+            .FirstOrDefault()?.Content
+            ?? "Design iteration";
+
+        var summary = await GenerateIterationSummaryAsync(
+            userInstruction,
+            succeeded: false,
+            exception.Message,
+            cancellationToken);
+
         iteration.DiagnosticLog = diagnostic;
         iteration.MarkFailed(summary);
+        iteration.Summary = summary;
         await _sessions.UpdateIterationAsync(iteration, cancellationToken);
         session.MarkFailed();
         await _sessions.UpdateSessionAsync(session, cancellationToken);
 
-        await _sessions.AddMessageAsync(session.Id, MessageRole.Assistant, diagnostic, cancellationToken);
+        await _sessions.AddMessageAsync(session.Id, MessageRole.Assistant, diagnostic, iteration.Id, cancellationToken: cancellationToken);
 
         await _notifier.NotifyIterationFailedAsync(
             new AgentProgressDto(session.Id, iteration.Id, "failed", summary, diagnostic),
@@ -263,10 +297,50 @@ public class DesignAgentService : IDesignAgentService
         return iteration.Id;
     }
 
-    private static string MapRole(MessageRole role) => role switch
+    private async Task<string> GenerateIterationSummaryAsync(
+        string userInstruction,
+        bool succeeded,
+        string? details,
+        CancellationToken cancellationToken)
     {
-        MessageRole.User => "user",
-        MessageRole.Assistant => "assistant",
-        _ => "system"
-    };
+        var fallback = succeeded
+            ? $"Completed iteration: {Truncate(userInstruction, 120)}"
+            : $"Failed iteration: {Truncate(details ?? userInstruction, 120)}";
+
+        try
+        {
+            var prompt = succeeded
+                ? $"""
+                   User request: {userInstruction}
+                   Outcome: The OpenSCAD model rendered successfully.
+                   Write 2-3 concise sentences for a project log describing what was designed and built. Do not include code.
+                   """
+                : $"""
+                   User request: {userInstruction}
+                   Outcome: The iteration failed.
+                   Details: {details}
+                   Write 2-3 concise sentences for a project log describing what was attempted and what went wrong. Do not include code.
+                   """;
+
+            var summary = await _ollama.ChatAsync(
+            [
+                new OllamaMessage(
+                    "system",
+                    "You write brief iteration summaries for a 3D design agent project log."),
+                new OllamaMessage("user", prompt)
+            ],
+            cancellationToken);
+
+            var trimmed = summary.Trim();
+            return string.IsNullOrWhiteSpace(trimmed) ? fallback : Truncate(trimmed, 600);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to generate iteration summary");
+            return fallback;
+        }
+    }
+
+    private static string Truncate(string value, int maxLength) =>
+        value.Length <= maxLength ? value : value[..maxLength];
 }

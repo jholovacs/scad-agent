@@ -10,6 +10,8 @@ public class DesignSession
     public Guid? CurrentIterationId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public string? ContextSummary { get; set; }
+    public Guid? ContextSummarizedThroughMessageId { get; set; }
 
     public DesignIteration? CurrentIteration { get; set; }
     public ICollection<DesignIteration> Iterations { get; set; } = new List<DesignIteration>();

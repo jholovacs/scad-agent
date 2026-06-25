@@ -43,4 +43,11 @@ public class LocalArtifactStore : IArtifactStore
         Stream stream = File.OpenRead(artifactPath);
         return Task.FromResult<Stream?>(stream);
     }
+
+    public void DeleteSessionArtifacts(Guid sessionId)
+    {
+        var directory = Path.Combine(_options.ArtifactsPath, sessionId.ToString("N"));
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, recursive: true);
+    }
 }

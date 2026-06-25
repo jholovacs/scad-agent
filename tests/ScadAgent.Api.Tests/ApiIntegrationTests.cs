@@ -40,6 +40,8 @@ public class ScadAgentWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IOllamaService>();
             var ollama = Substitute.For<IOllamaService>();
             ollama.IsReachableAsync(Arg.Any<CancellationToken>()).Returns(true);
+            ollama.ChatAsync(Arg.Any<IReadOnlyList<OllamaMessage>>(), Arg.Any<CancellationToken>())
+                .Returns("DESIGN");
             services.AddSingleton(ollama);
 
             services.RemoveAll<IOpenScadService>();
@@ -106,5 +108,20 @@ public class ApiIntegrationTests : IClassFixture<ScadAgentWebApplicationFactory>
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var list = await listResponse.Content.ReadFromJsonAsync<List<SessionSummaryDto>>(JsonOptions);
         list!.Should().Contain(s => s.Id == created.Id);
+
+        await _client.PostAsJsonAsync(
+            $"/api/sessions/{created!.Id}/messages",
+            new PostMessageRequest("Create a cube"));
+
+        var messagesResponse = await _client.GetAsync($"/api/sessions/{created.Id}/messages?limit=10");
+        messagesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var messagesPage = await messagesResponse.Content.ReadFromJsonAsync<MessagesPageDto>(JsonOptions);
+        messagesPage!.Messages.Should().NotBeEmpty();
+
+        var deleteResponse = await _client.DeleteAsync($"/api/sessions/{created.Id}");
+        deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var missingResponse = await _client.GetAsync($"/api/sessions/{created.Id}");
+        missingResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }

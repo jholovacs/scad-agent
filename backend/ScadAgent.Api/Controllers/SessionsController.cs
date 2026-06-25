@@ -9,16 +9,16 @@ namespace ScadAgent.Api.Controllers;
 public class SessionsController : ControllerBase
 {
     private readonly ISessionService _sessions;
-    private readonly IDesignAgentService _agent;
+    private readonly ISessionMessageService _messages;
     private readonly ILogger<SessionsController> _logger;
 
     public SessionsController(
         ISessionService sessions,
-        IDesignAgentService agent,
+        ISessionMessageService messages,
         ILogger<SessionsController> logger)
     {
         _sessions = sessions;
-        _agent = agent;
+        _messages = messages;
         _logger = logger;
     }
 
@@ -42,11 +42,54 @@ public class SessionsController : ControllerBase
         return session is null ? NotFound() : Ok(session);
     }
 
-    [HttpGet("{id:guid}/iterations")]
-    public async Task<ActionResult<IReadOnlyList<IterationDto>>> GetIterations(
+    [HttpPatch("{id:guid}")]
+    public async Task<ActionResult<SessionDetailDto>> Update(
         Guid id,
-        CancellationToken cancellationToken) =>
-        Ok(await _sessions.GetIterationsAsync(id, cancellationToken));
+        [FromBody] UpdateSessionRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Title))
+            return BadRequest("Title is required.");
+
+        var session = await _sessions.UpdateSessionTitleAsync(id, request.Title, cancellationToken);
+        return session is null ? NotFound() : Ok(session);
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await _sessions.DeleteSessionAsync(id, cancellationToken);
+        return deleted ? NoContent() : NotFound();
+    }
+
+    [HttpGet("{id:guid}/iterations")]
+    public async Task<ActionResult<IterationsPageDto>> GetIterations(
+        Guid id,
+        [FromQuery] int limit = 10,
+        [FromQuery] int? beforeVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await _sessions.GetSessionAsync(id, cancellationToken);
+        if (session is null)
+            return NotFound();
+
+        return Ok(await _sessions.GetIterationsPageAsync(id, limit, beforeVersion, cancellationToken));
+    }
+
+    [HttpGet("{id:guid}/messages")]
+    public async Task<ActionResult<MessagesPageDto>> GetMessages(
+        Guid id,
+        [FromQuery] int limit = 10,
+        [FromQuery] DateTimeOffset? before = null,
+        [FromQuery] Guid? iterationId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var session = await _sessions.GetSessionAsync(id, cancellationToken);
+        if (session is null)
+            return NotFound();
+
+        return Ok(await _sessions.GetMessagesAsync(id, limit, before, iterationId, cancellationToken));
+    }
 
     [HttpPost("{id:guid}/messages")]
     public async Task<ActionResult<SessionDetailDto>> PostMessage(
@@ -61,15 +104,13 @@ public class SessionsController : ControllerBase
         if (session is null)
             return NotFound();
 
-        await _sessions.AddUserMessageAsync(id, request.Content, cancellationToken);
-
         try
         {
-            await _agent.RunIterationAsync(id, cancellationToken);
+            await _messages.HandleAsync(id, request.Content, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected agent failure for session {SessionId}", id);
+            _logger.LogError(ex, "Unexpected message handling failure for session {SessionId}", id);
         }
 
         var updated = await _sessions.GetSessionAsync(id, cancellationToken);

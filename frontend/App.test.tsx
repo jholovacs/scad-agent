@@ -7,7 +7,7 @@ describe('SessionList', () => {
   it('renders empty state and create button', () => {
     render(
       <MemoryRouter>
-        <SessionList sessions={[]} onCreate={() => undefined} />
+        <SessionList sessions={[]} onCreate={() => undefined} onDelete={() => undefined} />
       </MemoryRouter>,
     )
     expect(screen.getByText('SCAD Agent')).toBeInTheDocument()

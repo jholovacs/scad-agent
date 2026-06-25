@@ -4,10 +4,12 @@ import type { SessionSummary } from '../types/api'
 interface SessionListProps {
   sessions: SessionSummary[]
   onCreate: () => void
+  onDelete: (sessionId: string) => void
   creating?: boolean
+  deletingId?: string | null
 }
 
-export function SessionList({ sessions, onCreate, creating }: SessionListProps) {
+export function SessionList({ sessions, onCreate, onDelete, creating, deletingId }: SessionListProps) {
   return (
     <section className="session-list">
       <header>
@@ -19,11 +21,23 @@ export function SessionList({ sessions, onCreate, creating }: SessionListProps) 
       <ul>
         {sessions.map((session) => (
           <li key={session.id}>
-            <Link to={`/sessions/${session.id}`}>
+            <Link to={`/sessions/${session.id}`} className="session-list__link">
               <strong>{session.title}</strong>
               <span>{session.status}</span>
               <time>{new Date(session.updatedAt).toLocaleString()}</time>
             </Link>
+            <button
+              type="button"
+              className="session-list__delete"
+              aria-label={`Delete ${session.title}`}
+              disabled={deletingId === session.id}
+              onClick={() => {
+                if (window.confirm(`Delete "${session.title}"? This cannot be undone.`))
+                  onDelete(session.id)
+              }}
+            >
+              {deletingId === session.id ? 'Deleting…' : 'Delete'}
+            </button>
           </li>
         ))}
       </ul>

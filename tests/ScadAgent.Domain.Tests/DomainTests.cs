@@ -55,6 +55,7 @@ public class DesignIterationTests
         iteration.Status.Should().Be(IterationStatus.Succeeded);
         iteration.StlArtifactPath.Should().Be("/tmp/model.stl");
         iteration.PreviewArtifactPath.Should().Be("/tmp/preview.png");
+        iteration.Summary.Should().Be("done");
     }
 }
 

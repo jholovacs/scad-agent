@@ -30,6 +30,12 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("Intent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("IterationId")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Role")
                         .HasColumnType("INTEGER");
 
@@ -37,6 +43,8 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IterationId");
 
                     b.HasIndex("SessionId");
 
@@ -76,6 +84,11 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ScadUnits")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
                     b.Property<Guid>("SessionId")
                         .HasColumnType("TEXT");
 
@@ -83,6 +96,14 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("StlArtifactPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StlExportUnits")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("Summary")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Version")
@@ -100,6 +121,12 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ContextSummarizedThroughMessageId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContextSummary")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -128,11 +155,18 @@ namespace ScadAgent.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("ScadAgent.Domain.Entities.ConversationMessage", b =>
                 {
+                    b.HasOne("ScadAgent.Domain.Entities.DesignIteration", "Iteration")
+                        .WithMany()
+                        .HasForeignKey("IterationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("ScadAgent.Domain.Entities.DesignSession", "Session")
                         .WithMany("Messages")
                         .HasForeignKey("SessionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Iteration");
 
                     b.Navigation("Session");
                 });

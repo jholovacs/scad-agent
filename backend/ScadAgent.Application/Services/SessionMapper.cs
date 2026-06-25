@@ -18,14 +18,17 @@ public static class SessionMapper
             iteration.Status,
             iteration.ScadContent,
             iteration.AssistantSummary,
+            iteration.Summary,
             iteration.RenderError,
             iteration.DiagnosticLog,
             !string.IsNullOrEmpty(iteration.StlArtifactPath),
             !string.IsNullOrEmpty(iteration.PreviewArtifactPath),
-            iteration.CreatedAt);
+            iteration.CreatedAt,
+            iteration.ScadUnits,
+            iteration.StlExportUnits);
 
     public static MessageDto ToDto(ConversationMessage message) =>
-        new(message.Id, message.Role, message.Content, message.CreatedAt);
+        new(message.Id, message.Role, message.Content, message.CreatedAt, message.IterationId, message.Intent);
 
     public static SessionDetailDto ToDetail(DesignSession session)
     {
@@ -40,6 +43,6 @@ public static class SessionMapper
             session.CreatedAt,
             session.UpdatedAt,
             current is null ? null : ToDto(current),
-            session.Messages.OrderBy(m => m.CreatedAt).Select(ToDto).ToList());
+            []);
     }
 }

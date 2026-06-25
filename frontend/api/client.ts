@@ -1,10 +1,12 @@
 import type {
   Iteration,
+  IterationsPage,
   Message,
+  MessagesPage,
   SessionDetail,
   SessionSummary,
 } from '../types/api'
-import { toIterationStatus, toMessageRole, toSessionStatus } from '../types/api'
+import { toIterationStatus, toLinearUnits, toMessageIntent, toMessageRole, toSessionStatus } from '../types/api'
 
 const baseUrl = ''
 
@@ -12,6 +14,8 @@ function normalizeMessage(message: Message): Message {
   return {
     ...message,
     role: toMessageRole(message.role),
+    iterationId: message.iterationId,
+    intent: toMessageIntent(message.intent),
   }
 }
 
@@ -19,6 +23,9 @@ function normalizeIteration(iteration: Iteration): Iteration {
   return {
     ...iteration,
     status: toIterationStatus(iteration.status),
+    summary: iteration.summary ?? iteration.assistantSummary,
+    scadUnits: toLinearUnits(iteration.scadUnits),
+    stlExportUnits: toLinearUnits(iteration.stlExportUnits),
   }
 }
 
@@ -83,15 +90,54 @@ export const api = {
     })),
   getSession: async (id: string) =>
     normalizeSession(await request<SessionDetail>(`/api/sessions/${id}`)),
-  getIterations: async (id: string) => {
-    const iterations = await request<Iteration[]>(`/api/sessions/${id}/iterations`)
-    return iterations.map(normalizeIteration)
+  getMessages: async (id: string, options?: { limit?: number; before?: string; iterationId?: string }) => {
+    const params = new URLSearchParams()
+    if (options?.limit)
+      params.set('limit', String(options.limit))
+    if (options?.before)
+      params.set('before', options.before)
+    if (options?.iterationId)
+      params.set('iterationId', options.iterationId)
+
+    const query = params.toString()
+    const page = await request<MessagesPage>(
+      `/api/sessions/${id}/messages${query ? `?${query}` : ''}`,
+    )
+    return {
+      ...page,
+      messages: page.messages.map(normalizeMessage),
+    }
+  },
+  getIterations: async (id: string, options?: { limit?: number; beforeVersion?: number }) => {
+    const params = new URLSearchParams()
+    if (options?.limit)
+      params.set('limit', String(options.limit))
+    if (options?.beforeVersion !== undefined)
+      params.set('beforeVersion', String(options.beforeVersion))
+
+    const query = params.toString()
+    const page = await request<IterationsPage>(
+      `/api/sessions/${id}/iterations${query ? `?${query}` : ''}`,
+    )
+    return {
+      ...page,
+      iterations: page.iterations.map(normalizeIteration),
+    }
   },
   postMessage: async (id: string, content: string) =>
     normalizeSession(await request<SessionDetail>(`/api/sessions/${id}/messages`, {
       method: 'POST',
       body: JSON.stringify({ content }),
     })),
+  updateSessionTitle: async (id: string, title: string) =>
+    normalizeSession(await request<SessionDetail>(`/api/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    })),
+  deleteSession: async (id: string) => {
+    await request<void>(`/api/sessions/${id}`, { method: 'DELETE' })
+  },
   stlUrl: (iterationId: string) => `/api/iterations/${iterationId}/artifacts/stl`,
+  scadUrl: (iterationId: string) => `/api/iterations/${iterationId}/artifacts/scad`,
   previewUrl: (iterationId: string) => `/api/iterations/${iterationId}/artifacts/preview`,
 }
